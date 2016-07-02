@@ -1,5 +1,6 @@
 package griddomination
 
 type Player struct {
-	SessionToken string `json:"session_token"`
+	Id string `datastore:"-" json:"id"`
+	SessionToken string `datastore:",noindex" json:"session_token"`
 }

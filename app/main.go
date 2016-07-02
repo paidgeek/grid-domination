@@ -1,20 +1,20 @@
 package griddomination
 
 import (
-	"github.com/go-martini/martini"
-	"github.com/martini-contrib/render"
+	"fmt"
+	"github.com/gorilla/mux"
 	"net/http"
 )
 
 func init() {
-	m := martini.Classic()
+	r := mux.NewRouter()
 
-	m.Use(render.Renderer())
-	m.Get("/", func() string {
-		return "Hello, world!"
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, World!")
 	})
-	m.Post("/log_in/:access_token", logInHandler)
-	m.Post("/grid/(?P<chunk_id>[0-9]+\\.[0-9]+)/(?P<cell_id>[0-9]+)", claimHandler)
+	r.HandleFunc("/log_in/{access_token}", logInHandler).
+		Methods("POST")
+	r.Handle("/grid/{chunk_id:[0-9]+\\.[0-9]+}/{cell_id:[0-9]+}", authenticator(http.HandlerFunc(claimHandler)))
 
-	http.Handle("/", m)
+	http.Handle("/", r)
 }

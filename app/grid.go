@@ -1,14 +1,17 @@
 package griddomination
 
 import (
-	"github.com/go-martini/martini"
-	"github.com/martini-contrib/render"
+	"github.com/gorilla/context"
+	"github.com/gorilla/mux"
 	"net/http"
 )
 
-func claimHandler(req *http.Request, r render.Render, params martini.Params) {
-	chunkId := params["chunk_id"]
-	cellId := params["cell_id"]
+func claimHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	chunkId := vars["chunk_id"]
+	cellId := vars["cell_id"]
 
-	r.Text(200, chunkId + ", " + cellId)
+	player := context.Get(r, "player").(Player)
+
+	responseJson(w, map[string]interface{}{"data": chunkId + ", " + cellId, "id":player.Id})
 }

@@ -2,32 +2,32 @@ package griddomination
 
 import (
 	"encoding/json"
-	"github.com/go-martini/martini"
+	"github.com/gorilla/mux"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/urlfetch"
-	"github.com/martini-contrib/render"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"time"
 )
 
-func logInHandler(req *http.Request, r render.Render, params martini.Params) {
-	accessToken := params["access_token"]
-	ctx := appengine.NewContext(req)
+func logInHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	accessToken := vars["access_token"]
+	ctx := appengine.NewContext(r)
 	client := urlfetch.Client(ctx)
 
 	grapResponse, err := client.Get(GraphAccessTokenUrl + accessToken)
 	defer grapResponse.Body.Close()
 	if err != nil {
-		r.JSON(401, map[string]interface{}{"error": err.Error()})
+		responseError(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	body, err := ioutil.ReadAll(grapResponse.Body)
 	if err != nil {
-		r.JSON(401, map[string]interface{}{"error": err.Error()})
+		responseError(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -36,7 +36,7 @@ func logInHandler(req *http.Request, r render.Render, params martini.Params) {
 	graphData := graphBody["data"].(map[string]interface{})
 
 	if graphData["app_id"] != FacebookAppId {
-		r.JSON(401, map[string]interface{}{"error": "invalid app"})
+		responseError(w, "invalid app", http.StatusUnauthorized)
 		return
 	}
 
@@ -48,20 +48,22 @@ func logInHandler(req *http.Request, r render.Render, params martini.Params) {
 
 	if err != nil {
 		player = &Player{
+			Id: userId,
 			SessionToken: generateSessionToken(),
 		}
 	} else {
+		player.Id = userId
 		player.SessionToken = generateSessionToken()
 	}
 
 	_, err = datastore.Put(ctx, playerKey, player)
 
 	if err != nil {
-		r.JSON(401, map[string]interface{}{"error": err.Error()})
+		responseError(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	r.JSON(200, player)
+	responseJson(w, player)
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
