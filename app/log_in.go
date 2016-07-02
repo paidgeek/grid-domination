@@ -1,15 +1,12 @@
-package griddomination
+package main
 
 import (
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"google.golang.org/appengine"
-	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/urlfetch"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
-	"time"
 )
 
 func logInHandler(w http.ResponseWriter, r *http.Request) {
@@ -41,14 +38,11 @@ func logInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userId := graphData["user_id"].(string)
-	playerKey := datastore.NewKey(ctx, "Player", userId, 0, nil)
+	player := PlayerDatabase.GetPlayer(ctx, userId)
 
-	player := &Player{}
-	err = datastore.Get(ctx, playerKey, player)
-
-	if err != nil {
+	if player == nil {
 		player = &Player{
-			Id: userId,
+			Id:           userId,
 			SessionToken: generateSessionToken(),
 		}
 	} else {
@@ -56,39 +50,15 @@ func logInHandler(w http.ResponseWriter, r *http.Request) {
 		player.SessionToken = generateSessionToken()
 	}
 
-	_, err = datastore.Put(ctx, playerKey, player)
+	if player.SessionToken == "" {
+		responseError(w, "", http.StatusUnauthorized)
+		return
+	}
 
-	if err != nil {
+	if err = PlayerDatabase.PutPlayer(ctx, player); err != nil {
 		responseError(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	responseJson(w, player)
-}
-
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
-const (
-	letterIdxBits = 6                    // 6 bits to represent a letter index
-	letterIdxMask = 1 << letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
-)
-
-var src = rand.NewSource(time.Now().UnixNano())
-
-func generateSessionToken() string {
-	n := 64
-	b := make([]byte, n)
-	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			cache, remain = src.Int63(), letterIdxMax
-		}
-		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= letterIdxBits
-		remain--
-	}
-
-	return string(b)
 }

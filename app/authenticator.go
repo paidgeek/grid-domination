@@ -1,9 +1,8 @@
-package griddomination
+package main
 
 import (
 	"net/http"
 	"google.golang.org/appengine"
-	"google.golang.org/appengine/datastore"
 	"github.com/gorilla/context"
 	"strings"
 )
@@ -14,26 +13,24 @@ func authenticator(h http.Handler) http.Handler {
 			authHeader := r.Header.Get("Authorization")
 
 			if len(authHeader) == 0 {
-				responseError(w, "", http.StatusUnauthorized)
+				responseError(w, "no Authorization header found", http.StatusUnauthorized)
 				return
 			}
 
 			auth := strings.Split(authHeader, ".")
 
 			if len(auth) != 2 {
-				responseError(w, "", http.StatusUnauthorized)
+				responseError(w, "invalid Authorization header", http.StatusUnauthorized)
 				return
 			}
 
 			playerId := auth[0]
 			sessionToken := auth[1]
-			playerKey := datastore.NewKey(ctx, "Player", playerId, 0, nil)
 
-			var player Player
-			err := datastore.Get(ctx, playerKey, &player)
+			player := PlayerDatabase.GetPlayer(ctx, playerId)
 
-			if err != nil || player.SessionToken != sessionToken {
-				responseError(w, "", http.StatusUnauthorized)
+			if player == nil || player.SessionToken != sessionToken {
+				responseError(w, "invalid session token", http.StatusUnauthorized)
 				return
 			}
 

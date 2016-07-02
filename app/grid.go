@@ -1,4 +1,4 @@
-package griddomination
+package main
 
 import (
 	"github.com/gorilla/context"
@@ -11,7 +11,7 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 	chunkId := vars["chunk_id"]
 	cellId := vars["cell_id"]
 
-	player := context.Get(r, "player").(Player)
+	player := context.Get(r, "player").(*Player)
 
 	responseJson(w, map[string]interface{}{"data": chunkId + ", " + cellId, "id":player.Id})
 }

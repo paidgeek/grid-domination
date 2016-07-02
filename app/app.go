@@ -1,4 +1,4 @@
-package griddomination
+package main
 
 import (
 	"fmt"
