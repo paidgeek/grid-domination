@@ -2,6 +2,7 @@ package griddomination
 
 import (
 	"time"
+	"strconv"
 )
 
 type Player struct {
@@ -31,6 +32,8 @@ type Chunk struct {
 	Id          string `datastore:"-" json:"id"`
 	CellsBinary []byte `datastore:",noindex" json:"-"`
 	Cells       map[string]Cell `datastore:"-" json:"cells"`
+	X int64 `datastore:"-" json:"-"`
+	Y int64 `datastore:"-" json:"-"`
 }
 
 func (player *Player) ToPrivatePlayer() *PrivatePlayer {
@@ -51,4 +54,26 @@ type ClaimMessage struct {
 type GetChunksMessage struct {
 	Chunks []*Chunk `json:"chunks"`
 	Player *PrivatePlayer `json:"player"`
+}
+
+func (chunk *Chunk) Update() bool {
+	hasChanged := false
+	now := time.Now().UTC()
+
+	for i := 0; i < 64; i++ {
+		id := strconv.Itoa(i)
+
+		if cell, ok := chunk.Cells[id]; ok {
+			diffMinutes := now.Sub(cell.ClaimedAt).Minutes()
+
+			if diffMinutes >= 0.09 {
+				cell.IsOwned = true
+				cell.IsStealing = false
+				chunk.Cells[id] = cell
+				hasChanged = true
+			}
+		}
+	}
+
+	return hasChanged
 }

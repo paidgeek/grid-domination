@@ -5,7 +5,6 @@ import (
 	"errors"
 	"golang.org/x/net/context"
 	"github.com/pquerna/ffjson/ffjson"
-	"google.golang.org/appengine"
 	"google.golang.org/appengine/memcache"
 	"time"
 )
@@ -73,17 +72,16 @@ func getChunk(ctx context.Context, id string) *Chunk {
 
 	key := datastore.NewKey(ctx, "Chunk", id, 0, nil)
 
-	if err := datastore.Get(ctx, key, chunk); err != nil {
-		return nil
+	if err := datastore.Get(ctx, key, chunk); err == nil {
+		err := ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
+
+		if err != nil {
+			return nil
+		}
 	}
 
 	chunk.Id = id
 	chunk.Cells = make(map[string]Cell)
-	err := ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
-
-	if err != nil {
-		return nil
-	}
 
 	memcache.Gob.Set(ctx, &memcache.Item{
 		Key:"chunk." + id,
@@ -96,39 +94,57 @@ func getChunk(ctx context.Context, id string) *Chunk {
 
 func getChunks(ctx context.Context, ids []string) []*Chunk {
 	chunks := make([]*Chunk, len(ids))
-	keys := make([]*datastore.Key, len(ids))
+	var keys []*datastore.Key
 
 	for i, id := range ids {
-		keys[i] = datastore.NewKey(ctx, "Chunk", id, 0, nil)
+		chunk := &Chunk{}
+
+		if _, err := memcache.Gob.Get(ctx, "chunk." + id, chunk); err == nil {
+			chunks[i] = chunk
+		} else {
+			keys = append(keys, datastore.NewKey(ctx, "Chunk", id, 0, nil))
+		}
 	}
 
-	if err := datastore.GetMulti(ctx, keys, chunks); err != nil {
-		if multiErr, ok := err.(appengine.MultiError); ok {
-			for i, err := range multiErr {
-				chunk := chunks[i]
+	if len(keys) == 0 {
+		return chunks
+	}
 
-				if err != nil {
-					if chunk == nil {
-						chunk = &Chunk{}
-						chunks[i] = chunk
-					}
+	dbChunks := make([]*Chunk, len(keys))
+	datastore.GetMulti(ctx, keys, dbChunks)
 
-					chunk.Id = ids[i]
-					chunk.Cells = make(map[string]Cell)
-				} else {
-					chunk.Id = ids[i]
-					chunk.Cells = make(map[string]Cell)
-					ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
+	for i, chunk := range chunks {
+		if chunk == nil {
+			id := ids[i]
+
+			for j, key := range keys {
+				if key.StringID() == id {
+					chunk = dbChunks[j]
+
+					break
 				}
 			}
 		}
-	} else {
-		for i := 0; i < len(chunks); i++ {
-			chunk := chunks[i]
-			chunk.Id = ids[i]
-			chunk.Cells = make(map[string]Cell)
-			ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
+
+		if chunk == nil {
+			chunk = &Chunk{}
 		}
+
+		chunk.Id = ids[i]
+		chunk.Cells = make(map[string]Cell)
+
+		if len(chunk.CellsBinary) != 0 {
+			ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
+			chunk.Update()
+		}
+
+		memcache.Gob.Set(ctx, &memcache.Item{
+			Key:"chunk." + chunk.Id,
+			Object:chunk,
+			Expiration:MemcacheChunkExpiration,
+		})
+
+		chunks[i] = chunk
 	}
 
 	return chunks
