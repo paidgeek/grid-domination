@@ -9,13 +9,13 @@ import (
 	"golang.org/x/net/context"
 	"errors"
 	"time"
-	"google.golang.org/appengine"
 	"strings"
+	"math/rand"
 )
 
 func claimHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	ctx := appengine.NewContext(r)
+	ctx := gorillaContext.Get(r, "ctx").(context.Context)
 	player := gorillaContext.Get(r, "player").(*Player)
 
 	chunkLocation := LocationFromId(vars["chunk_id"])
@@ -32,7 +32,7 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 		chunkId := chunkLocation.ToId()
-		chunk = GetChunk(ctx, chunkId)
+		chunk = getChunk(ctx, chunkId)
 		hasChanged := false
 		isSuccess := false
 
@@ -54,6 +54,9 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 				chunk.Cells[cellIdStr] = cell
 				hasChanged = true
 				isSuccess = true
+
+				player.Score++
+				player.Pixels += int64(rand.Intn(5))
 			}
 		} else {
 			chunk.Cells[cellIdStr] = Cell{
@@ -65,7 +68,7 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if hasChanged {
-			if err := PutChunk(ctx, chunk); err != nil {
+			if err := putChunk(ctx, chunk); err != nil {
 				return err
 			}
 		}
@@ -82,7 +85,10 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseJson(w, chunk)
+	responseJson(w, ClaimMessage{
+		Chunk: chunk,
+		Player:player.ToPrivatePlayer(),
+	})
 }
 
 func canClaim(player *Player, chunk *Chunk, cell *Cell) bool {
@@ -113,14 +119,18 @@ func updateChunk(chunk *Chunk) bool {
 
 func getChunksHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	ctx := appengine.NewContext(r)
+	ctx := gorillaContext.Get(r, "ctx").(context.Context)
+	player := gorillaContext.Get(r, "player").(*Player)
 	coords := strings.Split(vars["chunk_ids"], ",")
 
-	chunks := GetChunks(ctx, coords)
+	chunks := getChunks(ctx, coords)
 
 	for _, chunk := range chunks {
 		updateChunk(chunk)
 	}
 
-	responseJson(w, chunks)
+	responseJson(w, GetChunksMessage{
+		Chunks: chunks,
+		Player: player.ToPrivatePlayer(),
+	})
 }

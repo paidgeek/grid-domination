@@ -7,6 +7,7 @@ import (
 	"google.golang.org/appengine/urlfetch"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 func logInHandler(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +39,7 @@ func logInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userId := graphData["user_id"].(string)
-	player := GetPlayer(ctx, userId)
+	player := getPlayer(ctx, userId)
 
 	if player == nil {
 		player = &Player{
@@ -55,10 +56,12 @@ func logInHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = PutPlayer(ctx, player); err != nil {
+	player.LastActionAt = time.Now().UTC()
+
+	if err = putPlayer(ctx, player); err != nil {
 		responseError(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	responseJson(w, player)
+	responseJson(w, player.ToPrivatePlayer())
 }
