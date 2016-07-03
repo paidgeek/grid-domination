@@ -1,10 +1,14 @@
-package main
+package griddomination
 
 import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
+	"strconv"
+	"fmt"
+	"github.com/pquerna/ffjson/ffjson"
 )
 
 func responseError(w http.ResponseWriter, message string, code int) {
@@ -15,7 +19,9 @@ func responseError(w http.ResponseWriter, message string, code int) {
 
 func responseJson(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	buf, _ := ffjson.Marshal(&data)
+	w.Write(buf)
+	ffjson.Pool(buf)
 }
 
 func generateSessionToken() string {
@@ -27,4 +33,22 @@ func generateSessionToken() string {
 	}
 
 	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+type Location struct {
+	X int64
+	Y int64
+}
+
+func LocationFromId(id string) Location {
+	coords := strings.Split(id, ".")
+
+	x, _ := strconv.ParseInt(coords[0], 10, 64)
+	y, _ := strconv.ParseInt(coords[1], 10, 64)
+
+	return Location{X:x, Y:y}
+}
+
+func (location *Location) ToId() string {
+	return fmt.Sprintf("%v.%v", location.X, location.Y)
 }

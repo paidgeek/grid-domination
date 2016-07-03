@@ -1,4 +1,4 @@
-package main
+package griddomination
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ func init() {
 		fmt.Fprintf(w, "Hello, World!")
 	})
 	r.HandleFunc("/log_in/{access_token}", logInHandler).
-		Methods("POST")
+	Methods("POST")
 	r.Handle("/grid/{chunk_id:[0-9]+\\.[0-9]+}/{cell_id:[0-9]+}", authenticator(http.HandlerFunc(claimHandler)))
 
 	http.Handle("/", r)

@@ -1,4 +1,4 @@
-package main
+package griddomination
 
 import (
 	"encoding/json"
@@ -38,7 +38,7 @@ func logInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userId := graphData["user_id"].(string)
-	player := PlayerDatabase.GetPlayer(ctx, userId)
+	player := GetPlayer(ctx, userId)
 
 	if player == nil {
 		player = &Player{
@@ -55,7 +55,7 @@ func logInHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = PlayerDatabase.PutPlayer(ctx, player); err != nil {
+	if err = PutPlayer(ctx, player); err != nil {
 		responseError(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
