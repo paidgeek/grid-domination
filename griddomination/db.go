@@ -5,6 +5,7 @@ import (
 	"errors"
 	"golang.org/x/net/context"
 	"github.com/pquerna/ffjson/ffjson"
+	"google.golang.org/appengine"
 )
 
 func GetPlayer(ctx context.Context, id string) *Player {
@@ -55,8 +56,43 @@ func GetChunk(ctx context.Context, id string) *Chunk {
 	if err != nil {
 		return nil
 	}
-
+	
 	return chunk
+}
+
+func GetChunks(ctx context.Context, ids []string) []*Chunk {
+	chunks := make([]*Chunk, len(ids))
+	keys := make([]*datastore.Key, len(ids))
+
+	for i, id := range ids {
+		keys[i] = datastore.NewKey(ctx, "Chunk", id, 0, nil)
+	}
+
+	if err := datastore.GetMulti(ctx, keys, chunks); err != nil {
+		if multiErr, ok := err.(appengine.MultiError); ok {
+			for i, err := range multiErr {
+				chunk := chunks[i]
+
+				if err != nil {
+					if chunk == nil {
+						chunk = &Chunk{}
+					} else {
+
+					}
+
+					chunk.Id = ids[i]
+					chunk.Cells = make(map[string]Cell)
+					chunks[i] = chunk
+				} else {
+					chunk.Id = ids[i]
+					chunk.Cells = make(map[string]Cell)
+					ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
+				}
+			}
+		}
+	}
+
+	return chunks
 }
 
 func PutChunk(ctx context.Context, chunk *Chunk) error {

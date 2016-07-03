@@ -10,6 +10,7 @@ import (
 	"errors"
 	"time"
 	"google.golang.org/appengine"
+	"strings"
 )
 
 func claimHandler(w http.ResponseWriter, r *http.Request) {
@@ -108,4 +109,18 @@ func updateChunk(chunk *Chunk) bool {
 	}
 
 	return hasChanged
+}
+
+func getChunksHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ctx := appengine.NewContext(r)
+	coords := strings.Split(vars["chunk_ids"], ",")
+
+	chunks := GetChunks(ctx, coords)
+
+	for _, chunk := range chunks {
+		updateChunk(chunk)
+	}
+
+	responseJson(w, chunks)
 }

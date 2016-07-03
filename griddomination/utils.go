@@ -40,13 +40,26 @@ type Location struct {
 	Y int64
 }
 
-func LocationFromId(id string) Location {
+func LocationFromId(id string) *Location {
 	coords := strings.Split(id, ".")
 
-	x, _ := strconv.ParseInt(coords[0], 10, 64)
-	y, _ := strconv.ParseInt(coords[1], 10, 64)
+	if len(coords) != 2 {
+		return nil
+	}
 
-	return Location{X:x, Y:y}
+	x, err := strconv.ParseInt(coords[0], 10, 64)
+
+	if err != nil {
+		return nil
+	}
+
+	y, err := strconv.ParseInt(coords[1], 10, 64)
+
+	if err != nil {
+		return nil
+	}
+
+	return &Location{X:x, Y:y}
 }
 
 func (location *Location) ToId() string {

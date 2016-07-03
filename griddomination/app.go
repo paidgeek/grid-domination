@@ -1,7 +1,6 @@
 package griddomination
 
 import (
-	"fmt"
 	"github.com/gorilla/mux"
 	"net/http"
 )
@@ -9,12 +8,16 @@ import (
 func init() {
 	r := mux.NewRouter()
 
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, World!")
-	})
-	r.HandleFunc("/log_in/{access_token}", logInHandler).
+	r.HandleFunc("/v1/log_in/{access_token}", logInHandler).
 	Methods("POST")
-	r.Handle("/grid/{chunk_id:[0-9]+\\.[0-9]+}/{cell_id:[0-9]+}", authenticator(http.HandlerFunc(claimHandler)))
+
+	r.Handle("/v1/grid/{chunk_id:-?[0-9]+\\.-?[0-9]+}/{cell_id:[0-9]+}", authenticator(http.HandlerFunc(claimHandler))).
+	Methods("POST")
+
+	r.Handle("/v1/grid/{chunk_ids:(-?[0-9]+\\.-?[0-9]+)(,-?[0-9]+\\.-?[0-9]+)*}", authenticator(http.HandlerFunc(getChunksHandler))).
+	Methods("GET")
+
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
 
 	http.Handle("/", r)
 }
