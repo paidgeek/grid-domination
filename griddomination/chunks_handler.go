@@ -10,7 +10,6 @@ import (
 	"errors"
 	"time"
 	"strings"
-	"math/rand"
 	"fmt"
 )
 
@@ -18,67 +17,91 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	ctx := gorillaContext.Get(r, "ctx").(context.Context)
 	player := gorillaContext.Get(r, "player").(*Player)
+	isTake := false
+
+	if take, err := strconv.ParseBool(r.URL.Query().Get("take")); err == nil {
+		isTake = take
+	}
 
 	chunkId := vars["chunk_id"]
-	chunkX, chunkY, chunkErr := locationFromId(chunkId)
-	cellIdStr := vars["cell_id"]
 	cellId, cellErr := strconv.ParseInt(vars["cell_id"], 10, 64)
-
-	if cellErr != nil || chunkErr != nil || cellId < 0 || cellId >= 64 {
+	if cellErr != nil || cellId < 0 || cellId >= 64 {
 		responseError(w, "invalid ids", http.StatusBadRequest)
 		return
 	}
 
-	// claim
+	chunk := getChunk(ctx, chunkId)
+	if chunk == nil {
+		responseError(w, "invalid chunk", http.StatusBadRequest)
+		return
+	}
+
+	err := claim(ctx, cellId, chunk, player, isTake)
+
+	if err != nil {
+		responseError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	responseJson(w, ClaimMessage{
+		Chunk: chunk,
+		Player:player.ToPrivatePlayer(),
+	})
+}
+
+func takeHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ctx := gorillaContext.Get(r, "ctx").(context.Context)
+	player := gorillaContext.Get(r, "player").(*Player)
+
+	chunkId := vars["chunk_id"]
+	cellIdStr := vars["cell_id"]
+	cellId, cellErr := strconv.ParseInt(vars["cell_id"], 10, 64)
+
+	if cellErr != nil || cellId < 0 || cellId >= 64 {
+		responseError(w, "invalid ids", http.StatusBadRequest)
+		return
+	}
+
 	var chunk *Chunk
 
 	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
 		chunk = getChunk(ctx, chunkId)
-		hasChanged := false
-		isSuccess := false
 
-		chunk.X = chunkX
-		chunk.Y = chunkY
+		if chunk == nil {
+			return errors.New("invalid chunk")
+		}
+
 		chunk.Update()
 
 		if cell, ok := chunk.Cells[cellIdStr]; ok {
-			if canSteal(&cell, player) && canClaim(ctx, player, chunk, cellId) {
-				// steal
-				cell.PlayerId = player.Id
-				cell.ClaimedAt = time.Now().UTC()
-				cell.IsStealing = cell.IsOwned
-				cell.IsOwned = false
+			cost := cell.GetTakeCost()
+
+			if !cell.IsOwned && cell.PlayerId == player.Id {
+				if player.Pixels <= cost {
+					return errors.New("not enough pixels")
+				}
+
+				cell.IsStealing = false
+				cell.IsOwned = true
 
 				chunk.Cells[cellIdStr] = cell
-				hasChanged = true
-				isSuccess = true
-			}
-		} else {
-			if canClaim(ctx, player, chunk, cellId) {
-				// first time claim
-				chunk.Cells[cellIdStr] = Cell{
-					PlayerId:player.Id,
-					ClaimedAt:time.Now().UTC(),
+
+				if err := putChunk(ctx, chunk); err != nil {
+					return err
 				}
-				hasChanged = true
-				isSuccess = true
+
+				player.Score++
+				player.Pixels -= cost
+				player.Reward()
+
+				if err := putPlayer(ctx, player); err != nil {
+					return err
+				}
 			}
 		}
 
-		if hasChanged {
-			if err := putChunk(ctx, chunk); err != nil {
-				return err
-			}
-		}
-
-		if isSuccess {
-			player.Score++
-			player.Pixels += int64(rand.Intn(5))
-
-			return nil
-		} else {
-			return errors.New("cannot claim")
-		}
+		return nil
 	}, &datastore.TransactionOptions{XG:true})
 
 	if err != nil {
@@ -101,7 +124,9 @@ func getChunksHandler(w http.ResponseWriter, r *http.Request) {
 	chunks := getChunks(ctx, coords)
 
 	for _, chunk := range chunks {
-		chunk.Update()
+		if chunk != nil {
+			chunk.Update()
+		}
 	}
 
 	responseJson(w, GetChunksMessage{
@@ -110,11 +135,85 @@ func getChunksHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func canSteal(cell *Cell, player *Player) bool {
-	return cell.IsOwned && cell.PlayerId != player.Id
+func claim(ctx context.Context, cellId int64, chunk *Chunk, player *Player, isTake bool) error {
+	cellIdStr := strconv.FormatInt(cellId, 10)
+
+	err := datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+		isSuccess := false
+		isSteal := false
+		chunk.Update()
+
+		cell := chunk.Cells[cellIdStr]
+
+		if player.Score == 0 {
+			isSuccess = cell == nil
+		} else {
+			if cell == nil && hasNeighbours(ctx, player, chunk, cellId) {
+				isSuccess = true
+			} else if cell != nil && cell.IsOwned && cell.PlayerId != player.Id && hasNeighbours(ctx, player, chunk, cellId) {
+				isSuccess = true
+				isSteal = true
+			}
+		}
+
+		if isSuccess {
+			if cell == nil {
+				cell = &Cell{}
+			}
+
+			cell.SetClaimDurationForPlayer(player)
+			cost := cell.GetTakeCost()
+
+			if isTake {
+				if player.Pixels < cost {
+					return errors.New("not enough pixels")
+				}
+
+				player.Pixels -= cost
+				cell.IsOwned = true
+			}
+
+			cell.PlayerId = player.Id
+			cell.ClaimedAt = time.Now().UTC()
+			cell.IsStealing = isSteal
+
+			chunk.Cells[cellIdStr] = cell
+
+			if isSteal {
+				otherPlayer := getPlayer(ctx, cell.PlayerId)
+
+				if otherPlayer == nil {
+					return errors.New("other player is nil")
+				}
+
+				otherPlayer.Score--
+
+				if err := putPlayer(ctx, otherPlayer); err != nil {
+					return err
+				}
+			}
+
+			player.Score++
+			player.Reward()
+
+			if err := putPlayer(ctx, player); err != nil {
+				return err
+			}
+
+			if err := putChunk(ctx, chunk); err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		return errors.New("cannot claim")
+	}, &datastore.TransactionOptions{XG:true})
+
+	return err
 }
 
-func canClaim(ctx context.Context, player *Player, chunk *Chunk, cellId int64) bool {
+func hasNeighbours(ctx context.Context, player *Player, chunk *Chunk, cellId int64) bool {
 	cx := cellId % 8
 	cy := cellId / 8
 
@@ -153,10 +252,13 @@ func checkCell(ctx context.Context, x int64, y int64, chunk *Chunk, playerId str
 
 	if changeChunk {
 		chunk = getChunk(ctx, fmt.Sprintf("%v.%v", chunkX, chunkY))
-		chunk.Update()
+
+		if chunk != nil {
+			chunk.Update()
+		}
 	}
 
-	if cell, ok := chunk.Cells[fmt.Sprint(y * 8 + x)]; ok {
+	if cell, ok := chunk.Cells[strconv.FormatInt(y * 8 + x, 10)]; ok {
 		if cell.PlayerId == playerId {
 			return true
 		}

@@ -74,14 +74,18 @@ func getChunk(ctx context.Context, id string) *Chunk {
 
 	if err := datastore.Get(ctx, key, chunk); err == nil {
 		err := ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)
+		x, y, locErr := locationFromId(id)
 
-		if err != nil {
+		if err != nil || locErr != nil {
 			return nil
 		}
+
+		chunk.X = x
+		chunk.Y = y
 	}
 
 	chunk.Id = id
-	chunk.Cells = make(map[string]Cell)
+	chunk.Cells = make(map[string]*Cell)
 
 	memcache.Gob.Set(ctx, &memcache.Item{
 		Key:"chunk." + id,
@@ -131,7 +135,7 @@ func getChunks(ctx context.Context, ids []string) []*Chunk {
 		}
 
 		chunk.Id = ids[i]
-		chunk.Cells = make(map[string]Cell)
+		chunk.Cells = make(map[string]*Cell)
 
 		if len(chunk.CellsBinary) != 0 {
 			ffjson.Unmarshal(chunk.CellsBinary, &chunk.Cells)

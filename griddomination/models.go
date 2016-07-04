@@ -3,6 +3,8 @@ package griddomination
 import (
 	"time"
 	"strconv"
+	"math"
+	"math/rand"
 )
 
 type Player struct {
@@ -22,18 +24,19 @@ type PrivatePlayer struct {
 }
 
 type Cell struct {
-	PlayerId   string `json:"player_id"`
-	ClaimedAt  time.Time `json:"claimed_at"`
-	IsOwned    bool `json:"is_owned"`
-	IsStealing bool `json:"is_stealing"`
+	PlayerId      string `json:"player_id"`
+	ClaimedAt     time.Time `json:"claimed_at"`
+	ClaimDuration time.Duration `json:"claim_duration"`
+	IsOwned       bool `json:"is_owned"`
+	IsStealing    bool `json:"is_stealing"`
 }
 
 type Chunk struct {
 	Id          string `datastore:"-" json:"id"`
 	CellsBinary []byte `datastore:",noindex" json:"-"`
-	Cells       map[string]Cell `datastore:"-" json:"cells"`
-	X int64 `datastore:"-" json:"-"`
-	Y int64 `datastore:"-" json:"-"`
+	Cells       map[string]*Cell `datastore:"-" json:"cells"`
+	X           int64 `datastore:"-" json:"-"`
+	Y           int64 `datastore:"-" json:"-"`
 }
 
 func (player *Player) ToPrivatePlayer() *PrivatePlayer {
@@ -64,9 +67,7 @@ func (chunk *Chunk) Update() bool {
 		id := strconv.Itoa(i)
 
 		if cell, ok := chunk.Cells[id]; ok {
-			diffMinutes := now.Sub(cell.ClaimedAt).Minutes()
-
-			if diffMinutes >= 0.09 {
+			if now.Sub(cell.ClaimedAt) >= cell.ClaimDuration {
 				cell.IsOwned = true
 				cell.IsStealing = false
 				chunk.Cells[id] = cell
@@ -76,4 +77,18 @@ func (chunk *Chunk) Update() bool {
 	}
 
 	return hasChanged
+}
+
+func (player *Player) Reward() {
+	player.Pixels += rand.Int63n(5) + 1
+}
+
+func (cell *Cell) SetClaimDurationForPlayer(player *Player) {
+	cell.ClaimDuration = time.Minute
+}
+
+func (cell *Cell) GetTakeCost() int64 {
+	diff := time.Now().UTC().Sub(cell.ClaimedAt.Add(cell.ClaimDuration))
+
+	return int64(math.Ceil(math.Sqrt(diff.Minutes()) + 5.0))
 }

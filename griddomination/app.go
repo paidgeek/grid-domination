@@ -13,6 +13,8 @@ func init() {
 
 	r.Handle("/v1/chunks/{chunk_id:-?[0-9]+\\.-?[0-9]+}/{cell_id:[0-9]+}", authenticator(http.HandlerFunc(claimHandler))).
 	Methods("POST")
+	r.Handle("/v1/chunks/{chunk_id:-?[0-9]+\\.-?[0-9]+}/{cell_id:[0-9]+}/take", authenticator(http.HandlerFunc(takeHandler))).
+	Methods("POST")
 
 	r.Handle("/v1/chunks/{chunk_ids:(-?[0-9]+\\.-?[0-9]+)(,-?[0-9]+\\.-?[0-9]+)*}", authenticator(http.HandlerFunc(getChunksHandler))).
 	Methods("GET")
