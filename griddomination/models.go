@@ -89,6 +89,11 @@ func (cell *Cell) SetClaimDurationForPlayer(player *Player) {
 
 func (cell *Cell) GetTakeCost() int64 {
 	diff := time.Now().UTC().Sub(cell.ClaimedAt.Add(cell.ClaimDuration))
+	m := diff.Minutes()
 
-	return int64(math.Ceil(math.Sqrt(diff.Minutes()) + 5.0))
+	if m < 0 {
+		m = 0
+	}
+
+	return int64(math.Ceil(math.Sqrt(m) + 5.0))
 }

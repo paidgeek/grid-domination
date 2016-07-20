@@ -9,15 +9,15 @@ func init() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/v1/log_in/{access_token}", logInHandler).
-	Methods("POST")
+		Methods("POST")
 
 	r.Handle("/v1/chunks/{chunk_id:-?[0-9]+\\.-?[0-9]+}/{cell_id:[0-9]+}", authenticator(http.HandlerFunc(claimHandler))).
-	Methods("POST")
+		Methods("POST")
 	r.Handle("/v1/chunks/{chunk_id:-?[0-9]+\\.-?[0-9]+}/{cell_id:[0-9]+}/take", authenticator(http.HandlerFunc(takeHandler))).
-	Methods("POST")
+		Methods("POST")
 
 	r.Handle("/v1/chunks/{chunk_ids:(-?[0-9]+\\.-?[0-9]+)(,-?[0-9]+\\.-?[0-9]+)*}", authenticator(http.HandlerFunc(getChunksHandler))).
-	Methods("GET")
+		Methods("GET")
 
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
 

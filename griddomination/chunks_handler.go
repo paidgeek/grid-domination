@@ -1,16 +1,16 @@
 package griddomination
 
 import (
+	"errors"
+	"fmt"
 	gorillaContext "github.com/gorilla/context"
 	"github.com/gorilla/mux"
+	"golang.org/x/net/context"
+	"google.golang.org/appengine/datastore"
 	"net/http"
 	"strconv"
-	"google.golang.org/appengine/datastore"
-	"golang.org/x/net/context"
-	"errors"
-	"time"
 	"strings"
-	"fmt"
+	"time"
 )
 
 func claimHandler(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +44,8 @@ func claimHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	responseJson(w, ClaimMessage{
-		Chunk: chunk,
-		Player:player.ToPrivatePlayer(),
+		Chunk:  chunk,
+		Player: player.ToPrivatePlayer(),
 	})
 }
 
@@ -74,35 +74,42 @@ func takeHandler(w http.ResponseWriter, r *http.Request) {
 
 		chunk.Update()
 
-		if cell, ok := chunk.Cells[cellIdStr]; ok {
-			cost := cell.GetTakeCost()
+		var cell *Cell
 
-			if !cell.IsOwned && cell.PlayerId == player.Id {
-				if player.Pixels <= cost {
-					return errors.New("not enough pixels")
-				}
+		if c, ok := chunk.Cells[cellIdStr]; ok {
+			cell = c
+		} else {
+			return errors.New("invalid cell")
+		}
 
-				cell.IsStealing = false
-				cell.IsOwned = true
+		if cell.IsOwned || cell.PlayerId != player.Id {
+			return errors.New("cannot take")
+		}
 
-				chunk.Cells[cellIdStr] = cell
+		cost := cell.GetTakeCost()
 
-				if err := putChunk(ctx, chunk); err != nil {
-					return err
-				}
+		if player.Pixels < cost {
+			return errors.New("not enough pixels")
+		}
 
-				player.Score++
-				player.Pixels -= cost
-				player.Reward()
+		cell.IsStealing = false
+		cell.IsOwned = true
+		chunk.Cells[cellIdStr] = cell
 
-				if err := putPlayer(ctx, player); err != nil {
-					return err
-				}
-			}
+		if err := putChunk(ctx, chunk); err != nil {
+			return err
+		}
+
+		player.Score++
+		player.Pixels -= cost
+		player.Reward()
+
+		if err := putPlayer(ctx, player); err != nil {
+			return err
 		}
 
 		return nil
-	}, &datastore.TransactionOptions{XG:true})
+	}, &datastore.TransactionOptions{XG: true})
 
 	if err != nil {
 		responseError(w, err.Error(), http.StatusBadRequest)
@@ -110,8 +117,8 @@ func takeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	responseJson(w, ClaimMessage{
-		Chunk: chunk,
-		Player:player.ToPrivatePlayer(),
+		Chunk:  chunk,
+		Player: player.ToPrivatePlayer(),
 	})
 }
 
@@ -208,7 +215,7 @@ func claim(ctx context.Context, cellId int64, chunk *Chunk, player *Player, isTa
 		}
 
 		return errors.New("cannot claim")
-	}, &datastore.TransactionOptions{XG:true})
+	}, &datastore.TransactionOptions{XG: true})
 
 	return err
 }
@@ -217,10 +224,10 @@ func hasNeighbours(ctx context.Context, player *Player, chunk *Chunk, cellId int
 	cx := cellId % 8
 	cy := cellId / 8
 
-	if checkCell(ctx, cx - 1, cy, chunk, player.Id) ||
-	checkCell(ctx, cx + 1, cy, chunk, player.Id) ||
-	checkCell(ctx, cx, cy - 1, chunk, player.Id) ||
-	checkCell(ctx, cx, cy + 1, chunk, player.Id) {
+	if checkCell(ctx, cx-1, cy, chunk, player.Id) ||
+		checkCell(ctx, cx+1, cy, chunk, player.Id) ||
+		checkCell(ctx, cx, cy-1, chunk, player.Id) ||
+		checkCell(ctx, cx, cy+1, chunk, player.Id) {
 		return true
 	}
 
@@ -258,7 +265,7 @@ func checkCell(ctx context.Context, x int64, y int64, chunk *Chunk, playerId str
 		}
 	}
 
-	if cell, ok := chunk.Cells[strconv.FormatInt(y * 8 + x, 10)]; ok {
+	if cell, ok := chunk.Cells[strconv.FormatInt(y*8+x, 10)]; ok {
 		if cell.PlayerId == playerId {
 			return true
 		}
